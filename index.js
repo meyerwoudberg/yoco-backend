@@ -22,7 +22,7 @@ app.post('/checkout', async (req, res) => {
   }
 
   try {
-    const response = await fetch('https://payments.yoco.com/api/checkouts', {
+    const response = await fetch('https://online.yoco.com/v1/checkouts', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${YOCO_API_KEY}`,
