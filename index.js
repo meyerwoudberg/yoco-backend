@@ -1,9 +1,9 @@
 const express = require('express');
-const nodemailer = require('nodemailer');
 const app = express();
 app.use(express.json());
 
 const YOCO_API_KEY = process.env.YOCO_API_KEY;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const PORT = process.env.PORT || 3000;
 
 if (!YOCO_API_KEY) {
@@ -13,14 +13,30 @@ if (!YOCO_API_KEY) {
 
 console.log('[STARTUP] Key prefix:', YOCO_API_KEY.substring(0, 15) + '...');
 console.log('[STARTUP] Key length:', YOCO_API_KEY.length);
+console.log('[STARTUP] Resend key set:', RESEND_API_KEY ? 'YES' : 'NO');
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS
+async function sendEmail(subject, text) {
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'onboarding@resend.dev',
+        to: 'meyer@carpetlab.co.za',
+        subject,
+        text
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(JSON.stringify(data));
+    console.log('[EMAIL] Sent successfully:', data.id);
+  } catch (err) {
+    console.error('[EMAIL] Failed:', err.message);
   }
-});
+}
 
 app.get('/', (req, res) => res.json({ status: 'ok', service: 'Yoco Invoice Backend' }));
 
@@ -41,7 +57,6 @@ app.post('/checkout', async (req, res) => {
 
     const rawText = await response.text();
     console.log('[CHECKOUT] Yoco status:', response.status);
-    console.log('[CHECKOUT] Yoco raw response:', rawText);
 
     let data;
     try { data = JSON.parse(rawText); }
@@ -76,7 +91,6 @@ app.post('/payment-link', async (req, res) => {
 
     const rawText = await response.text();
     console.log('[PAYMENT-LINK] Yoco status:', response.status);
-    console.log('[PAYMENT-LINK] Yoco raw response:', rawText);
 
     let data;
     try { data = JSON.parse(rawText); }
@@ -122,18 +136,10 @@ app.post('/webhook', async (req, res) => {
   if (event.type === 'payment.succeeded') {
     const { amount, currency, externalReference } = event.payload || {};
     const amountFormatted = `R${(amount / 100).toFixed(2)}`;
-
-    try {
-      await transporter.sendMail({
-        from: process.env.GMAIL_USER,
-        to: 'meyer@carpetlab.co.za',
-        subject: `Payment Received — ${externalReference || 'Invoice'}`,
-        text: `A payment of ${amountFormatted} ${currency} has been received.\n\nReference: ${externalReference}\nAmount: ${amountFormatted}`
-      });
-      console.log('[WEBHOOK] Email sent for', externalReference);
-    } catch (err) {
-      console.error('[WEBHOOK] Email failed:', err.message);
-    }
+    await sendEmail(
+      `Payment Received — ${externalReference || 'Invoice'}`,
+      `A payment of ${amountFormatted} ${currency} has been received.\n\nReference: ${externalReference}\nAmount: ${amountFormatted}`
+    );
   }
 
   res.json({ received: true });
