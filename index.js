@@ -5,6 +5,7 @@ app.use(express.json());
 const YOCO_API_KEY = process.env.YOCO_API_KEY;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const PORT = process.env.PORT || 3000;
+const checkoutMap = {};
 
 if (!YOCO_API_KEY) {
   console.error('[STARTUP] ERROR: YOCO_API_KEY is not set');
@@ -64,6 +65,7 @@ app.post('/checkout', async (req, res) => {
 
     if (!response.ok) return res.status(response.status).json({ error: 'Yoco API error', detail: data });
 
+    checkoutMap[data.id] = externalReference;
     res.json({ id: data.id, redirectUrl: data.redirectUrl, status: data.status });
 
   } catch (err) {
@@ -123,6 +125,7 @@ async function fallbackToCheckout(res, amount, currency, externalReference) {
     try { data = JSON.parse(rawText); }
     catch (e) { return res.status(500).json({ error: 'Non-JSON fallback response' }); }
     if (!response.ok) return res.status(response.status).json({ error: 'Yoco fallback error', detail: data });
+    checkoutMap[data.id] = externalReference;
     res.json({ id: data.id, redirectUrl: data.redirectUrl, status: data.status });
   } catch (err) {
     res.status(500).json({ error: 'Fallback server error', detail: err.message });
@@ -134,10 +137,12 @@ app.post('/webhook', async (req, res) => {
   console.log('[WEBHOOK] Received:', JSON.stringify(event));
 
   if (event.type === 'payment.succeeded') {
-    const { amount, currency, externalReference } = event.payload || {};
+    const { amount, currency, metadata } = event.payload || {};
+    const checkoutId = metadata?.checkoutId;
+    const externalReference = checkoutMap[checkoutId] || checkoutId || 'Unknown';
     const amountFormatted = `R${(amount / 100).toFixed(2)}`;
     await sendEmail(
-      `Payment Received — ${externalReference || 'Invoice'}`,
+      `Payment Received — ${externalReference}`,
       `A payment of ${amountFormatted} ${currency} has been received.\n\nReference: ${externalReference}\nAmount: ${amountFormatted}`
     );
   }
