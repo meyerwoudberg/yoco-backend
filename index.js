@@ -24,7 +24,7 @@ async function sendEmail(subject, text) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: 'onboarding@resend.dev',
+        from: 'noreply@carpetlab.co.za',
         to: 'meyer@carpetlab.co.za',
         subject,
         text
